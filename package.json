@@ -1,0 +1,17 @@
+{
+  "name": "gig-calendar",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "google-auth-library": "^0.9.7",
+    "googleapis": "^2.1.7",
+    "moment": "^2.10.6",
+    "underscore": "^1.8.3"
+  }
+}
