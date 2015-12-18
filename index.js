@@ -3,6 +3,10 @@ var _ = require('underscore')
   , auth = require('./google-auth.js')
   , google = require('googleapis')
   , config = require('./config.json')
+  , request = require('request-promise')
+  , Bottleneck = require('bottleneck')
+  , limiter = new Bottleneck(1, 3000)
+  , Q = require('q')
 
 auth.authorize(listGigs)
 
@@ -21,8 +25,42 @@ function listGigs(auth) {
       console.log("Error trying to retrieve gig list", err)
       return
     }
-    var events = _.sortBy(mapResponse(response.items), _.property('date'))
-    console.log(_.groupBy(events, 'artist'))
+    var events = 
+      _.mapObject(
+        _.groupBy(mapResponse(response.items), 'artist')
+      , function(val, key) {
+        return { gigs: val }
+      })
+
+    var promises = []
+    _.each(Object.keys(events), function(artistName) {
+      var options = {
+          uri: 'http://developer.echonest.com/api/v4/artist/search'
+        , method: 'GET'
+        , qs: {
+            api_key: config.echonestkey 
+          , name: artistName
+          }
+        }
+
+      promises.push(limiter.schedule(echoNestRequest))
+
+      function echoNestRequest() {
+        console.log("Scheduling")
+        return request(options).then(function(data) {
+          console.log(data)
+        }).catch(function(err) {
+          console.log("Promise errored")
+          console.log(err)
+        })
+      }
+    })
+
+    Q.allSettled(promises).then(function(data) {
+      _.each(events, function(e) {
+        //console.log(e)
+      })
+    })
   })
 
   function mapResponseEvent(event) {
