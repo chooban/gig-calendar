@@ -30,13 +30,14 @@ function listGigs(auth) {
       _.mapObject(
         _.groupBy(convertToEvents(response.items), 'artist')
       , function(val, key) {
-        return { 
+        return {
           gigs: val
         , genres: []
         }
       })
       , promises = []
       , artists = Object.keys(events)
+      , i = 0
 
     //_.each(Object.keys(events), function(artistName) {
     artists.every(function(artistName) {
@@ -46,59 +47,39 @@ function listGigs(auth) {
         , qs: {
             api_key: config.echonestkey
           , name: artistName
+          , bucket: 'genre'
           , format: 'json'
           }
         , json: true
         }
-      , getGenres = _.partial(genresForArtist, artistName, _)
 
       promises.push(limiter.schedule(echonestRequest))
-      return false 
+      return i++ != 1
 
       function echonestRequest() {
         console.log("Getting artist data for", artistName)
         return request(options)
-                .then(getGenres)
+                .then(mapEchonestResponse)
                 .catch(function(err) {
                   console.log("Promise errored")
                   console.log(err)
                 })
       }
 
-      function genresForArtist(artistName, response) {
+      function mapEchonestResponse(response) {
         var artistData = response.response.artists[0]
           , artistId = artistData.id
-          , options = {
-              uri: 'http://developer.echonest.com/api/v4/artist/genres'
-            , method: 'GET'
-            , qs: {
-                api_key: config.echonestkey
-              , id: artistId
-              , format: 'json'
-              }
-            , json: true
-            }
 
         if (artistName !== artistData.name) {
           events[artistData.name] = events[artistName]
           delete events[artistName]
           artistName = artistData.name
         }
-        events[artistName].echonestId = artistId
-        promises.push(limiter.schedule(function(a) {
-          console.log("Getting genre data for", artistName)
-          return request(options).then(addGenresToArtist)
-        }, "bar"))
 
-        function addGenresToArtist(genresResponse) {
-          console.log("Adding " + _.values(genresResponse.response.terms) + " as genres for " + genresResponse.response.name)
-          console.log("Artist entry is currently :"
-                    , events[genresResponse.response.name])
-          events[genresResponse.response.name]['genres'] = _.values(genresResponse.response.terms)
-          console.log("Artist entry is now :"
-                    , events[genresResponse.response.name])
-        }
+        events[artistName].echonestId = artistId
+        events[artistName].genres = _.map(artistData.genres, _.property('name')) 
       }
+
     })
 
     Q.allSettled(promises).then(function(data) {
