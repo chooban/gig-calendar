@@ -9,7 +9,11 @@ var _ = require('underscore')
   , limiter = new Bottleneck(1, 3000)
   , Q = require('q')
 
-auth.authorize(listGigs)
+auth.authorize()
+    .then(listGigs)
+    .catch(function(error) {
+      console.log("Could not authenticate")
+    })
 
 function listGigs(auth) {
   var calendar = google.calendar('v3')
@@ -57,6 +61,9 @@ function listGigs(auth) {
       }
 
       function mapEchonestResponse(response) {
+        if (response.response.artists.length == 0) 
+          throw new Error("No data found for " + artistName)
+
         var artistData = response.response.artists[0]
           , artistId = artistData.id
 
