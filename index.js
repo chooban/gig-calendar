@@ -13,7 +13,7 @@ auth.authorize(listGigs)
 
 function listGigs(auth) {
   var calendar = google.calendar('v3')
-    , mapResponse = _.partial(_.map, _, mapResponseEvent)
+    , convertToEvents = _.partial(_.map, _, toEvent)
 
   calendar.events.list({
     auth: auth
@@ -28,13 +28,18 @@ function listGigs(auth) {
     }
     var events =
       _.mapObject(
-        _.groupBy(mapResponse(response.items), 'artist')
+        _.groupBy(convertToEvents(response.items), 'artist')
       , function(val, key) {
-        return { gigs: val }
+        return { 
+          gigs: val
+        , genres: []
+        }
       })
+      , promises = []
+      , artists = Object.keys(events)
 
-    var promises = []
-    _.each(Object.keys(events), function(artistName) {
+    //_.each(Object.keys(events), function(artistName) {
+    artists.every(function(artistName) {
       var options = {
           uri: 'http://developer.echonest.com/api/v4/artist/search'
         , method: 'GET'
@@ -48,6 +53,7 @@ function listGigs(auth) {
       , getGenres = _.partial(genresForArtist, artistName, _)
 
       promises.push(limiter.schedule(echonestRequest))
+      return false 
 
       function echonestRequest() {
         console.log("Getting artist data for", artistName)
@@ -73,28 +79,40 @@ function listGigs(auth) {
             , json: true
             }
 
-        console.log("Getting genre data for", artistName)
-
         if (artistName !== artistData.name) {
           events[artistData.name] = events[artistName]
           delete events[artistName]
           artistName = artistData.name
         }
         events[artistName].echonestId = artistId
-        limiter.schedule(function() { return request(options).then(addGenresToArtist) })
+        promises.push(limiter.schedule(function(a) {
+          console.log("Getting genre data for", artistName)
+          return request(options).then(addGenresToArtist)
+        }, "bar"))
 
         function addGenresToArtist(genresResponse) {
-          events[genresResponse.response.name].genres = _.values(genresResponse.response.terms)
+          console.log("Adding " + _.values(genresResponse.response.terms) + " as genres for " + genresResponse.response.name)
+          console.log("Artist entry is currently :"
+                    , events[genresResponse.response.name])
+          events[genresResponse.response.name]['genres'] = _.values(genresResponse.response.terms)
+          console.log("Artist entry is now :"
+                    , events[genresResponse.response.name])
         }
       }
     })
 
     Q.allSettled(promises).then(function(data) {
-      fs.writeFileSync("gig-data.json", JSON.stringify(events, null, 2), 'utf8')
+      console.log("All promises settled : ", events['Gogol Bordello'])
+      fs.writeFileSync(
+        "gig-data.json"
+      , JSON.stringify(events, null, 2)
+      , 'utf8'
+      , {'flags': 'w+'}
+      )
     })
   })
 
-  function mapResponseEvent(event) {
+  function toEvent(event) {
     return {
       artist: event.summary.trim()
     , date: moment(event.start.date || event.start.dateTime)
