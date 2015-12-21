@@ -13,7 +13,7 @@ auth.authorize(listGigs)
 
 function listGigs(auth) {
   var calendar = google.calendar('v3')
-    , convertToEvents = _.partial(_.map, _, toEvent)
+    , gigs = {}
 
   calendar.events.list({
     auth: auth
@@ -26,21 +26,12 @@ function listGigs(auth) {
       console.log("Error trying to retrieve gig list", err)
       return
     }
-    var events =
-      _.mapObject(
-        _.groupBy(convertToEvents(response.items), 'artist')
-      , function(val, key) {
-        return {
-          gigs: val
-        , genres: []
-        }
-      })
+    var events = response.items
       , promises = []
-      , artists = Object.keys(events)
+      , artists = _.uniq(_.map(events, _.property('summary')))
       , i = 0
 
-    //_.each(Object.keys(events), function(artistName) {
-    artists.every(function(artistName) {
+    _.each(artists, function(artistName) {
       var options = {
           uri: 'http://developer.echonest.com/api/v4/artist/search'
         , method: 'GET'
@@ -54,7 +45,6 @@ function listGigs(auth) {
         }
 
       promises.push(limiter.schedule(echonestRequest))
-      return i++ != 1
 
       function echonestRequest() {
         console.log("Getting artist data for", artistName)
@@ -70,34 +60,30 @@ function listGigs(auth) {
         var artistData = response.response.artists[0]
           , artistId = artistData.id
 
-        if (artistName !== artistData.name) {
-          events[artistData.name] = events[artistName]
-          delete events[artistName]
-          artistName = artistData.name
+        gigs[artistName] = {
+          echonestId: artistId
+        , genres: _.map(artistData.genres, _.property('name'))
+        , gigs: _.map(_.where(events, { summary: artistName }), toGig)
         }
 
-        events[artistName].echonestId = artistId
-        events[artistName].genres = _.map(artistData.genres, _.property('name')) 
+        function toGig(event) {
+          return {
+            date: moment(event.start.date || event.start.dateTime)
+          }
+        }
       }
 
     })
 
-    Q.allSettled(promises).then(function(data) {
-      console.log("All promises settled : ", events['Gogol Bordello'])
+    Q.allSettled(promises).then(writeGigsToFile)
+
+    function writeGigsToFile() {
       fs.writeFileSync(
         "gig-data.json"
-      , JSON.stringify(events, null, 2)
+      , JSON.stringify(gigs, null, 2)
       , 'utf8'
       , {'flags': 'w+'}
       )
-    })
-  })
-
-  function toEvent(event) {
-    return {
-      artist: event.summary.trim()
-    , date: moment(event.start.date || event.start.dateTime)
     }
-  }
-
+  })
 }
