@@ -14,10 +14,9 @@
     "google-auth-library": "^0.9.7",
     "googleapis": "^2.1.7",
     "moment": "^2.10.6",
-    "q": "^1.4.1",
     "request": "^2.67.0",
     "request-promise": "^1.0.2",
-    "spotify-web-api-node": "^2.2.0",
+    "spotify-web-api-node": "2.3.5",
     "underscore": "^1.8.3"
   }
 }

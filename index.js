@@ -1,96 +1,81 @@
-var _ = require('underscore')
-  , moment = require('moment')
-  , auth = require('./google-auth.js')
-  , google = require('googleapis')
-  , config = require('./config.json')
-  , request = require('request-promise')
-  , Bottleneck = require('bottleneck')
-  , fs = require('fs')
-  , limiter = new Bottleneck(1, 3000)
-  , Q = require('q')
+var _ = require('underscore'),
+    moment = require('moment'),
+    auth = require('./google-auth.js'),
+    google = require('googleapis'),
+    config = require('./config.json'),
+    request = require('request-promise'),
+    Bottleneck = require('bottleneck'),
+    fs = require('fs'),
+    limiter = new Bottleneck(1, 3000),
+    SpotifyWebApi = require('spotify-web-api-node');
 
-auth.authorize()
-    .then(listGigs)
-    .catch(function(error) {
-      console.log("Could not authenticate")
+var spotifyApi = new SpotifyWebApi({
+    clientId: config.clientId,
+    clientSecret: config.clientSecret
+});
+
+spotifyApi.clientCredentialsGrant()
+    .then(function(data) {
+        spotifyApi.setAccessToken(data.body['access_token']);
     })
+    .then(getGigData)
+    .catch(function(err) {
+        console.error(err);
+    })
+
+function getGigData() {
+    auth.authorize()
+        .then(listGigs)
+        .then(function(allGigs) {
+          return allGigs.reduce(function(acc, gig) {
+            if (acc[gig.artist]) {
+              acc[gig.artist].gigs.push(gig);
+            } else {
+              acc[gig.artist] = {
+                gigs: [gig]
+              };
+            }
+            return acc;
+          }, {});
+        })
+        .then(writeGigsToFile)
+        .catch(function(error) {
+            console.log("Could not authenticate")
+            console.error(error);
+        })
+}
 
 function listGigs(auth) {
-  var calendar = google.calendar('v3')
-    , gigs = {}
+    var calendar = google.calendar('v3'),
+        gigs = {};
 
-  calendar.events.list({
-    auth: auth
-  , calendarId: config.calendar
-  , timeMin: '1997-01-01T23:59:00Z'
-  , timeMax: '2015-12-31T23:59:00Z'
-  , fields: "items(summary,start)"
-  }, function(err, response) {
-    if (err) {
-      console.log("Error trying to retrieve gig list", err)
-      return
-    }
-    var events = response.items
-      , promises = []
-      , artists = _.uniq(_.map(events, _.property('summary')))
-      , i = 0
+    return new Promise(function(resolve, reject) {
+        calendar.events.list({
+            auth: auth,
+            calendarId: config.calendar,
+            timeMin: '1997-01-01T23:59:00Z',
+            timeMax: '2017-06-06T23:59:00Z',
+            fields: "items(summary,start)"
+        }, function(error, response) {
+            if (error) {
+                console.log("Error trying to retrieve gig list", err);
+                return reject(error);
+            }
 
-    _.each(artists, function(artistName) {
-      var options = {
-          uri: 'http://developer.echonest.com/api/v4/artist/search'
-        , method: 'GET'
-        , qs: {
-            api_key: config.echonestkey
-          , name: artistName
-          , bucket: 'genre'
-          , format: 'json'
-          }
-        , json: true
+            resolve(response.items.map(function(event) {
+                return {
+                    artist: event.summary,
+                    date: moment(event.start.date || event.start.dateTime).format('YYYY-MM-DD')
+                };
+            }));
+        });
+    });
+}
+
+function writeGigsToFile(gigs) {
+    fs.writeFileSync(
+        "gig-data.json", JSON.stringify(gigs, null, 2), 'utf8', {
+            'flags': 'w+'
         }
-
-      promises.push(limiter.schedule(echonestRequest))
-
-      function echonestRequest() {
-        console.log("Getting artist data for", artistName)
-        return request(options)
-                .then(mapEchonestResponse)
-                .catch(function(err) {
-                  console.log("Promise errored")
-                  console.log(err)
-                })
-      }
-
-      function mapEchonestResponse(response) {
-        if (response.response.artists.length == 0) 
-          throw new Error("No data found for " + artistName)
-
-        var artistData = response.response.artists[0]
-          , artistId = artistData.id
-
-        gigs[artistName] = {
-          echonestId: artistId
-        , genres: _.map(artistData.genres, _.property('name'))
-        , gigs: _.map(_.where(events, { summary: artistName }), toGig)
-        }
-
-        function toGig(event) {
-          return {
-            date: moment(event.start.date || event.start.dateTime)
-          }
-        }
-      }
-
-    })
-
-    Q.allSettled(promises).then(writeGigsToFile)
-
-    function writeGigsToFile() {
-      fs.writeFileSync(
-        "gig-data.json"
-      , JSON.stringify(gigs, null, 2)
-      , 'utf8'
-      , {'flags': 'w+'}
-      )
-    }
-  })
+    )
 }
