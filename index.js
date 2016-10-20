@@ -1,4 +1,4 @@
-var _ = require('underscore'),
+const _ = require('underscore'),
     moment = require('moment'),
     auth = require('./google-auth.js'),
     google = require('googleapis'),
@@ -9,25 +9,25 @@ var _ = require('underscore'),
     limiter = new Bottleneck(1, 3000),
     SpotifyWebApi = require('spotify-web-api-node');
 
-var spotifyApi = new SpotifyWebApi({
+const spotifyApi = new SpotifyWebApi({
     clientId: config.clientId,
     clientSecret: config.clientSecret
 });
 
 spotifyApi.clientCredentialsGrant()
-    .then(function(data) {
+    .then((data) => {
         spotifyApi.setAccessToken(data.body['access_token']);
     })
     .then(getGigData)
-    .catch(function(err) {
+    .catch((err) => {
         console.error(err);
-    })
+    });
 
 function getGigData() {
     auth.authorize()
         .then(listGigs)
-        .then(function(allGigs) {
-          return allGigs.reduce(function(acc, gig) {
+        .then((allGigs) => (
+          allGigs.reduce((acc, gig) => {
             if (acc[gig.artist]) {
               acc[gig.artist].gigs.push(gig);
             } else {
@@ -36,10 +36,10 @@ function getGigData() {
               };
             }
             return acc;
-          }, {});
-        })
+          }, {})
+        ))
         .then(writeGigsToFile)
-        .catch(function(error) {
+        .catch((error) => {
             console.log("Could not authenticate")
             console.error(error);
         })

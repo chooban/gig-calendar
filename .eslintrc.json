@@ -1,0 +1,11 @@
+{
+  "parserOptions": {
+    "ecmaVersion": 6,
+    "impliedStrict": true,
+    "sourceType": "module"
+  },
+  "env": {
+    "node": true,
+    "es6": true
+  }
+}
